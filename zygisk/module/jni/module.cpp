@@ -75,7 +75,6 @@ private:
     }
 
     bool isWhitelisted (const std::string& process) {
-        bool ret = false;
         int len = 7;
 
         std::vector<std::string> whitelist = {
@@ -90,11 +89,11 @@ private:
 
         for (int i = 0; i < len; i++) {
             if (process == whitelist[i]) {
-                ret = true;
+                return true;
             }
         }
 
-        return ret;
+        return false;
     }
 
     void loadPayload() {
@@ -125,6 +124,9 @@ private:
                                                            "()Ljava/lang/ClassLoader;");
         auto systemClassLoader = env->CallStaticObjectMethod(clClass, getSystemClassLoader);
 
+        // Delete local reference to clClass
+        env->DeleteLocalRef(clClass);
+
         // Assuming we have a valid mapped module, load it. This is similar to the approach used for
         // Dynamite modules in GmsCompat, except we can use InMemoryDexClassLoader directly instead of
         // tampering with DelegateLastClassLoader's DexPathList.
@@ -136,6 +138,10 @@ private:
                                           "(Ljava/nio/ByteBuffer;Ljava/lang/ClassLoader;)V");
         auto dexCl = env->NewObject(dexClClass, dexClInit, buf, systemClassLoader);
 
+        // Delete local references to dexClClass and systemClassLoader
+        env->DeleteLocalRef(dexClClass);
+        env->DeleteLocalRef(systemClassLoader);
+
         // Load the class
         LOGD("load class");
         auto loadClass = env->GetMethodID(clClass, "loadClass",
@@ -143,11 +149,19 @@ private:
         auto entryClassName = env->NewStringUTF("com.dylanneve1.pixelplus.EntryPoint");
         auto entryClassObj = env->CallObjectMethod(dexCl, loadClass, entryClassName);
 
+        // Delete local references to clClass, dexCl, and entryClassName
+        env->DeleteLocalRef(clClass);
+        env->DeleteLocalRef(dexCl);
+        env->DeleteLocalRef(entryClassName);
+
         // Call init. Static initializers don't run when merely calling loadClass from JNI.
         LOGD("call init");
         auto entryClass = (jclass) entryClassObj;
         auto entryInit = env->GetStaticMethodID(entryClass, "init", "()V");
         env->CallStaticVoidMethod(entryClass, entryInit);
+
+        // Delete local reference to entryClass
+        env->DeleteLocalRef(entryClass);
     }
 };
 
